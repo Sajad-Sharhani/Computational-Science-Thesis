@@ -9,10 +9,10 @@ plt.rcParams['font.family'] = 'Arial'
 
 # Define the tasks, start and end dates, and colors
 tasks_adjusted = {
-    "Task": ["Reading Relevant Literature", "Writing a Literature Review", "Design and Coding", "Report Writing", "Comparison with Existing Approaches"],
+    "Task": ["Reading Relevant Literature", "Report Writing", "Design and Coding", "Comparison with Existing Approaches", "Presentation Preparation"],
     "Start": [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1), datetime(2023, 5, 1), datetime(2023, 6, 1)],
-    "Finish": [datetime(2023, 1, 31), datetime(2023, 2, 28), datetime(2023, 4, 30), datetime(2023, 5, 31), datetime(2023, 6, 30)],
-    "Color": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+    "Finish": [datetime(2023, 1, 31), datetime(2023, 6, 30), datetime(2023, 4, 30), datetime(2023, 5, 31), datetime(2023, 6, 30)],
+    "Color": ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62228"]
 }
 
 # Create a DataFrame from the data
@@ -47,13 +47,9 @@ ax.xaxis_date()
 ax.xaxis.set_major_locator(mdates.MonthLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d, %Y"))
 
-# Set labels and title
-# plt.xlabel('Date', fontsize=12)
-# plt.ylabel('Tasks', fontsize=12)
-plt.title('Thesis Time Plan Gantt Chart (Adjusted)', fontsize=14)
 
-# Rotate date labels for better readability
-# plt.xticks(rotation=45)
+plt.title('Thesis Time Plan', fontsize=14)
+
 ax.set_yticks(range(len(df_adjusted["Task"])))
 ax.set_yticklabels(df_adjusted["Task"])
 
