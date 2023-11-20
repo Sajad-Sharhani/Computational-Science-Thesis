@@ -9,9 +9,12 @@ plt.rcParams['font.family'] = 'Arial'
 
 # Define the tasks, start and end dates, and colors
 tasks_adjusted = {
-    "Task": ["Reading Relevant Literature", "Report Writing", "Design and Coding", "Comparison with Existing Approaches", "Presentation Preparation"],
-    "Start": [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1), datetime(2023, 5, 1), datetime(2023, 6, 1)],
-    "Finish": [datetime(2023, 1, 31), datetime(2023, 6, 30), datetime(2023, 4, 30), datetime(2023, 5, 31), datetime(2023, 6, 30)],
+    "Task": ["Reading Relevant Literature", "Report Writing", "Design and Coding", 
+             "Comparison with Existing Approaches", "Presentation Preparation"],
+    "Start": [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1), 
+              datetime(2023, 4, 1), datetime(2023, 6, 1)],
+    "Finish": [datetime(2023, 2, 28), datetime(2023, 6, 30), datetime(2023, 5, 31), 
+               datetime(2023, 5, 31), datetime(2023, 6, 30)],
     "Color": ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62228"]
 }
 
@@ -46,7 +49,7 @@ ax.set_ylim(-0.5, len(df_adjusted["Task"]) - 0.5)
 ax.xaxis_date()
 ax.xaxis.set_major_locator(mdates.MonthLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d, %Y"))
-
+plt.xticks(rotation=45)  # Rotating the x-axis labels
 
 plt.title('Thesis Time Plan', fontsize=14)
 
@@ -62,6 +65,9 @@ for spine in ax.spines.values():
 
 # Improve overall layout
 plt.tight_layout()
+
+# Save the plot with higher resolution for better readability
+plt.savefig('E:\\Uppsala\\Computational-Science-Thesis\\thesis_time_plan_bold.png', dpi=300)
 
 # Show the plot
 plt.show()
