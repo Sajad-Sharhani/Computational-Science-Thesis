@@ -4,7 +4,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 import numpy as np
+import random as python_random
 
+np.random.seed(123)
+python_random.seed(123)
+tf.random.set_seed(1234)
 
 # Load the dataset
 df = pd.read_csv('../data/adult.csv')
@@ -72,18 +76,40 @@ model.save_weights("model_weights.h5")
 # Evaluate the original model
 original_eval = model.evaluate([X_test_sensitive, X_test_permissible], y_test)
 
-# Creating a new model that only uses permissible attributes
-# Note: Reuse the 'input_permissible' and 'hidden1_permissible' layer definitions
-# from above if needed
-model_permissible_only = tf.keras.Model(inputs=[input_permissible], outputs=[output_permissible])
+
+## Creating a new model that only uses permissible attributes
+input_permissible_only = tf.keras.Input(shape=(X_train_permissible.shape[1],),
+                                        name='input_permissible_only')
+
+# Reusing hidden1_permissible layer from the original model architecture
+hidden1_permissible_only_layer = model.get_layer('hidden1_permissible')
+# Clone the layer configuration to ensure isolation from the original model
+hidden1_permissible_only = tf.keras.layers.deserialize({'class_name':
+    hidden1_permissible_only_layer.__class__.__name__,
+                                                        'config':
+                                                            hidden1_permissible_only_layer
+                                                            .get_config()
+                                                        })(input_permissible_only)
+
+# Set the layer's trainable status if needed
+# hidden1_permissible_only.trainable = False  # Uncomment if you want to freeze this layer
+
+# Assuming 'output_permissible' is an intermediate layer and not the final output
+# layer for binary classification
+# Create a new final output layer appropriate for binary classification
+final_output_permissible_only = tf.keras.layers.Dense(1, activation='sigmoid', name='final_output_permissible_only')(hidden1_permissible_only)
+
+model_permissible_only = tf.keras.Model(inputs=[input_permissible_only],
+                                        outputs=[final_output_permissible_only])
 
 # Load the saved weights into the permissible attributes-only model
+# This will load weights by name, and only layers present in both models will receive weights
 model_permissible_only.load_weights("model_weights.h5", by_name=True)
 
 # Compile the permissible-only model
 model_permissible_only.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-# Evaluate the permissible attributes-only model
+# Now, evaluate the permissible attributes-only model on the test set
 permissible_only_eval = model_permissible_only.evaluate(X_test_permissible, y_test)
 
 # Print evaluation results
