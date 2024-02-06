@@ -91,13 +91,31 @@ hidden1_permissible_only = tf.keras.layers.deserialize({'class_name':
                                                             .get_config()
                                                         })(input_permissible_only)
 
-# Set the layer's trainable status if needed
-# hidden1_permissible_only.trainable = False  # Uncomment if you want to freeze this layer
+
+# Define a custom function to mark the top k elements in a tensor with 1, others with 0 (per row)
+def mark_top_k_elements(x, k=5):
+    # Step 1: Get the indices that would sort the array
+    indices_of_sorted = tf.argsort(x, direction='DESCENDING')
+
+    # Step 2: Identify the top k positions by creating a binary mask
+    top_k_indices = indices_of_sorted[:, :k]  # Get the indices of the top k elements
+    depth = tf.shape(x)[-1]  # Get the tensor depth to create a one-hot encoding
+    one_hot = tf.one_hot(top_k_indices, depth, on_value=True, off_value=False, axis=-1)
+    top_k_mask = tf.reduce_any(one_hot, axis=1)
+
+    # Step 3: Apply the mask to set top k elements to 1, others to 0
+    result = tf.where(top_k_mask, tf.ones_like(x), tf.zeros_like(x))
+    return result
+
+
+new_hidden1_permissible_only = tf.keras.layers.Lambda(lambda x: mark_top_k_elements(x, k=8),
+                                                      name='new_hidden1_permissible_only')(hidden1_permissible_only)
+
 
 # Assuming 'output_permissible' is an intermediate layer and not the final output
 # layer for binary classification
 # Create a new final output layer appropriate for binary classification
-final_output_permissible_only = tf.keras.layers.Dense(1, activation='sigmoid', name='final_output_permissible_only')(hidden1_permissible_only)
+final_output_permissible_only = tf.keras.layers.Dense(1, activation='sigmoid', name='final_output_permissible_only')(new_hidden1_permissible_only)
 
 model_permissible_only = tf.keras.Model(inputs=[input_permissible_only],
                                         outputs=[final_output_permissible_only])
@@ -118,49 +136,49 @@ print("Permissible-only Model - Loss: {:.4f}, Accuracy: {:.4f}".format(permissib
                                                                        permissible_only_eval[1]))
 
 
-def disparate_impact(y_pred, sensitive_column):
-    """ Disparate Impact (DI) """
-    di_num = np.mean(y_pred[sensitive_column == 1])
-    di_denom = np.mean(y_pred[sensitive_column == 0])
-    return di_num / di_denom if di_denom != 0 else np.nan
+# def disparate_impact(y_pred, sensitive_column):
+#     """ Disparate Impact (DI) """
+#     di_num = np.mean(y_pred[sensitive_column == 1])
+#     di_denom = np.mean(y_pred[sensitive_column == 0])
+#     return di_num / di_denom if di_denom != 0 else np.nan
 
 
-def conditional_value(y_pred, sensitive_column):
-    """ Conditional Value (CV) """
-    cv_1 = np.mean(y_pred[sensitive_column == 1])
-    cv_0 = np.mean(y_pred[sensitive_column == 0])
-    return 1 - cv_1 - cv_0
+# def conditional_value(y_pred, sensitive_column):
+#     """ Conditional Value (CV) """
+#     cv_1 = np.mean(y_pred[sensitive_column == 1])
+#     cv_0 = np.mean(y_pred[sensitive_column == 0])
+#     return 1 - cv_1 - cv_0
 
 
-def group_conditioned_measures(y_pred, y_true, sensitive_column):
-    """ s-Accuracy, s-TPR, s-TNR, s-BCR """
-    accuracy = np.mean(y_pred[y_true == sensitive_column])
-    tpr = np.mean(y_pred[(y_true == 1) & (sensitive_column == 1)])
-    tnr = np.mean(y_pred[(y_true == 0) & (sensitive_column == 0)])
-    bcr = (tpr + tnr) / 2
-    return accuracy, tpr, tnr, bcr
+# def group_conditioned_measures(y_pred, y_true, sensitive_column):
+#     """ s-Accuracy, s-TPR, s-TNR, s-BCR """
+#     accuracy = np.mean(y_pred[y_true == sensitive_column])
+#     tpr = np.mean(y_pred[(y_true == 1) & (sensitive_column == 1)])
+#     tnr = np.mean(y_pred[(y_true == 0) & (sensitive_column == 0)])
+#     bcr = (tpr + tnr) / 2
+#     return accuracy, tpr, tnr, bcr
 
 
-def s_calibration_plus(y_pred, y_true, sensitive_column):
-    """ s-Calibration+ """
-    return np.mean(y_true[(y_pred == 1) & (sensitive_column == 1)])
+# def s_calibration_plus(y_pred, y_true, sensitive_column):
+#     """ s-Calibration+ """
+#     return np.mean(y_true[(y_pred == 1) & (sensitive_column == 1)])
 
 
-def s_calibration_minus(y_pred, y_true, sensitive_column):
-    """ s-Calibration- """
-    return np.mean(y_true[(y_pred == 0) & (sensitive_column == 1)])
+# def s_calibration_minus(y_pred, y_true, sensitive_column):
+#     """ s-Calibration- """
+#     return np.mean(y_true[(y_pred == 0) & (sensitive_column == 1)])
 
 
-y_pred = (model.predict([X_test_sensitive, X_test_permissible]) > 0.5).astype(int)
-y_pred = np.round(y_pred).flatten()
-y_true = y_test.values
-sensitive_column = X_test_sensitive[:, 0]
+# y_pred = (model.predict([X_test_sensitive, X_test_permissible]) > 0.5).astype(int)
+# y_pred = np.round(y_pred).flatten()
+# y_true = y_test.values
+# sensitive_column = X_test_sensitive[:, 0]
 
-print("Disparate Impact: {:.4f}".format(disparate_impact(y_pred, sensitive_column)))
-print("Conditional Value: {:.4f}".format(conditional_value(y_pred, sensitive_column)))
-print("s-Accuracy: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[0]))
-print("s-TPR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[1]))
-print("s-TNR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[2]))
-print("s-BCR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[3]))
-print("s-Calibration+: {:.4f}".format(s_calibration_plus(y_pred, y_true, sensitive_column)))
-print("s-Calibration-: {:.4f}".format(s_calibration_minus(y_pred, y_true, sensitive_column)))
+# print("Disparate Impact: {:.4f}".format(disparate_impact(y_pred, sensitive_column)))
+# print("Conditional Value: {:.4f}".format(conditional_value(y_pred, sensitive_column)))
+# print("s-Accuracy: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[0]))
+# print("s-TPR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[1]))
+# print("s-TNR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[2]))
+# print("s-BCR: {:.4f}".format(group_conditioned_measures(y_pred, y_true, sensitive_column)[3]))
+# print("s-Calibration+: {:.4f}".format(s_calibration_plus(y_pred, y_true, sensitive_column)))
+# print("s-Calibration-: {:.4f}".format(s_calibration_minus(y_pred, y_true, sensitive_column)))
