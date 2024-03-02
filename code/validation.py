@@ -27,12 +27,9 @@ y = df['income-per-year'].apply(lambda x: 1 if x == '>50K' else 0)
 sensitive_attributes = ['race', 'sex']
 permissible_attributes = list(set(categorical_cols + numerical_cols) - set(sensitive_attributes))
 
-X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=42)
-X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
-
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 X_train_transformed = preprocessor.fit_transform(X_train)
 X_test_transformed = preprocessor.transform(X_test)
-x_val_transformed = preprocessor.transform(X_val)
 sensitive_feature_indices = [i for i, col in enumerate(preprocessor.get_feature_names_out())
                              if any(s_attr in col for s_attr in sensitive_attributes)]
 permissible_feature_indices = [i for i, col in enumerate(preprocessor.get_feature_names_out())
@@ -87,8 +84,6 @@ X_train_sensitive = X_train_transformed[:, sensitive_feature_indices]
 X_train_permissible = X_train_transformed[:, permissible_feature_indices]
 X_test_sensitive = X_test_transformed[:, sensitive_feature_indices]
 X_test_permissible = X_test_transformed[:, permissible_feature_indices]
-X_val_sensitive = x_val_transformed[:, sensitive_feature_indices]
-X_val_permissible = x_val_transformed[:, permissible_feature_indices]
 
 # Compile and fit the model
 model.compile(optimizer='adam',
@@ -96,8 +91,8 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 history = model.fit([X_train_sensitive, X_train_permissible],
-                    y_train, epochs=10, batch_size=32,
-                    validation_data=([X_val_sensitive, X_val_permissible], y_val), verbose=1)
+                    y_train, epochs=10, batch_size=32, validation_split=0.2, verbose=1)
+
 # Make predictions
 y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
 y_pred_binary = (y_pred > 0.5).astype(int)
