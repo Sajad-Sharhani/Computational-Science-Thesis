@@ -57,6 +57,30 @@ def create_dual_input_model(input_shape_sensitive, input_shape_permissible):
     return model
 
 
+# Custom loss function wrapper
+def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None):
+    def custom_loss(y_true, y_pred):
+        accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
+
+        positive_preds = y_pred[y_true == 1]
+        negative_preds = y_pred[y_true == 0]
+
+        if tf.size(positive_preds) > 0 and tf.size(negative_preds) > 0:
+            fairness_loss = 1 - tf.abs(
+                tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
+        else:
+            fairness_loss = 0.0
+
+        if baseline_predictions is not None:
+            conservatism_loss = tf.keras.losses.mean_squared_error(baseline_predictions, y_pred)
+        else:
+            conservatism_loss = tf.constant(0.0, dtype=tf.float32)
+
+        total_loss = accuracy_loss + alpha * fairness_loss + beta * conservatism_loss
+        return total_loss
+    return custom_loss
+
+
 # Adjust the shapes for sensitive and permissible inputs
 input_shape_sensitive = len(sensitive_feature_indices)
 input_shape_permissible = len(permissible_feature_indices)
@@ -71,46 +95,14 @@ X_test_sensitive = X_test_transformed[:, sensitive_feature_indices]
 X_test_permissible = X_test_transformed[:, permissible_feature_indices]
 
 
-def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None):
-    def custom_loss(y_true, y_pred):
-        tf.print("tensors y_true:", y_true)
-        tf.print("tensors y_pred:", y_pred)
-        accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
+betas = np.linspace(0, 1, 5)  # Adjust the range and number of beta values as needed
 
-        positive_preds = y_pred[y_true == 1]
-        negative_preds = y_pred[y_true == 0]
-
-        if tf.size(positive_preds) > 0 and tf.size(negative_preds) > 0:
-            fairness_loss = 1 - tf.abs(tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
-        else:
-            fairness_loss = 0.0
-
-        if baseline_predictions is not None:
-            conservatism_loss = tf.keras.losses.mean_squared_error(baseline_predictions, y_pred)
-        else:
-            conservatism_loss = tf.constant(0.0, dtype=tf.float32)
-
-        total_loss = accuracy_loss + alpha * fairness_loss + beta * conservatism_loss
-        return total_loss
-    return custom_loss
-
-
-# Compile and fit the model
-model.compile(optimizer='adam',
-              loss=custom_loss_wrapper(alpha=1, beta=1, baseline_predictions=y_train),
-              #   loss='binary_crossentropy',
-              metrics=['accuracy'])
-
-history = model.fit([X_train_sensitive, X_train_permissible],
-                    y_train, epochs=20, batch_size=8, validation_split=0.2, verbose=1)
-
-# Make predictions
-y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
-y_pred_binary = (y_pred > 0.5).astype(int)
-
-# Assuming X_test_sensitive is a numpy array with the sensitive column you're interested in
-# For the purpose of demonstration, let's say it's the first column
-sensitive_column = X_test_sensitive[:, 0]  # Update this as per your sensitive attribute index
+# Initialize lists to store results
+accuracy_losses = []
+fairness_losses = []
+accuracies = []
+mean_predictions = []
+conservatism_losses = []
 
 
 def conditional_value(y_pred, sensitive_column):
@@ -120,39 +112,64 @@ def conditional_value(y_pred, sensitive_column):
     return 1 - cv_1 - cv_0
 
 
-# Calculate fairness using conditional value
-fairness_score = conditional_value(y_pred_binary, sensitive_column)
+baseline_predictions = np.mean(y_train)
+for beta in betas:
+    print(f"Training model with beta: {beta}")
+    # Recompile the model with the current beta
+    model.compile(optimizer='adam',
+                  loss=custom_loss_wrapper(alpha=1, beta=beta, baseline_predictions=y_train),
+                  metrics=['accuracy'])
 
-print(f"Fairness score: {fairness_score}")
+    # Train the model
+    history = model.fit([X_train_sensitive, X_train_permissible], y_train,
+                        epochs=10, batch_size=32, verbose=0)
 
-print("Training history:", history.history)
+    # Make predictions
+    y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
+    y_pred_binary = (y_pred > 0.5).astype(int)
 
-# Accessing the history data
-epochs = range(1, len(history.history['loss']) + 1)
-loss = history.history['loss']
-val_loss = history.history['val_loss']
-accuracy = history.history['accuracy']
-val_accuracy = history.history['val_accuracy']
+    # Calculate losses and mean prediction
+    accuracy_loss = history.history['loss'][-1]
+    fairness_loss = conditional_value(y_pred_binary, X_test_sensitive[:, 0])
+    mean_prediction = np.mean(y_pred)
+    conservatism_loss = np.mean(np.square(baseline_predictions - y_pred))
+    accuracy = history.history['accuracy'][-1]
 
-# Plotting total loss
-plt.figure(figsize=(14, 5))
+    # Store results
+    accuracy_losses.append(accuracy_loss)
+    fairness_losses.append(fairness_loss)
+    mean_predictions.append(mean_prediction)
+    accuracies.append(accuracy)
+    conservatism_losses.append(conservatism_loss)
 
-plt.subplot(1, 2, 1)
-plt.plot(epochs, loss, 'bo-', label='Training loss')
-plt.plot(epochs, val_loss, 'ro-', label='Validation loss')
-plt.title('Training and validation loss')
-plt.xlabel('Epochs')
+# Now, plot the results
+plt.figure(figsize=(12, 8))
+
+# Plot for losses
+plt.subplot(3, 1, 1)  # 2 rows, 1 column, 1st subplot
+plt.plot(betas, accuracy_losses, label='Accuracy Loss')
+plt.plot(betas, fairness_losses, label='Fairness Loss')
+plt.title('Losses as a Function of Beta')
+plt.xlabel('Beta')
 plt.ylabel('Loss')
 plt.legend()
 
-# Plotting accuracy
-plt.subplot(1, 2, 2)
-plt.plot(epochs, accuracy, 'bo-', label='Training accuracy')
-plt.plot(epochs, val_accuracy, 'ro-', label='Validation accuracy')
-plt.title('Training and validation accuracy')
-plt.xlabel('Epochs')
-plt.ylabel('Accuracy')
+# conservatism loss vs beta
+plt.subplot(3, 1, 2)  # 2 rows, 1 column, 2nd subplot
+plt.plot(betas, conservatism_losses, label='Conservatism Loss')
+plt.title('Conservatism Loss as a Function of Beta')
+plt.xlabel('Beta')
+plt.ylabel('Conservatism Loss')
 plt.legend()
 
-plt.tight_layout()
+# mean prediction vs beta
+plt.subplot(3, 1, 3)  # 2 rows, 1 column, 3rd subplot
+plt.plot(betas, mean_predictions, label='Mean Prediction')
+plt.title('Mean Prediction as a Function of Beta')
+plt.xlabel('Beta')
+plt.ylabel('Mean Prediction')
+plt.legend()
+
+
+plt.tight_layout()  # Adjusts subplot params so that subplots fit into the figure area
 plt.show()

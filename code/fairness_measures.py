@@ -130,8 +130,10 @@ def s_calibration_minus(y_pred, y_true, sensitive_column):
 
 y_pred = (model.predict([X_test_sensitive, X_test_permissible]) > 0.5).astype(int)
 y_pred = np.round(y_pred).flatten()
+print(y_pred)
 y_true = y_test.values
 sensitive_column = X_test_sensitive[:, 0]
+print('sen col', sensitive_column)
 
 print("Disparate Impact: {:.4f}".format(disparate_impact(y_pred, sensitive_column)))
 print("Conditional Value: {:.4f}".format(conditional_value(y_pred, sensitive_column)))

@@ -44,13 +44,18 @@ X_test_permissible = X_test_transformed[:, permissible_feature_indices]
 
 # Neural Network 1 (Sensitive Attributes)
 input_sensitive = tf.keras.Input(shape=(X_train_sensitive.shape[1],), name='input_sensitive')
-hidden1_sensitive = tf.keras.layers.Dense(10, activation='relu', name='hidden1_sensitive')(input_sensitive)
-output_sensitive = tf.keras.layers.Dense(5, activation='relu', name='output_sensitive')(hidden1_sensitive)
+hidden1_sensitive = tf.keras.layers.Dense(10, activation='relu',
+                                          name='hidden1_sensitive')(input_sensitive)
+output_sensitive = tf.keras.layers.Dense(5, activation='relu',
+                                         name='output_sensitive')(hidden1_sensitive)
 
 # Neural Network 2 (Permissible Attributes)
-input_permissible = tf.keras.Input(shape=(X_train_permissible.shape[1],), name='input_permissible')
-hidden1_permissible = tf.keras.layers.Dense(10, activation='relu', name='hidden1_permissible')(input_permissible)
-output_permissible = tf.keras.layers.Dense(5, activation='relu', name='output_permissible')(hidden1_permissible)
+input_permissible = tf.keras.Input(shape=(X_train_permissible.shape[1],),
+                                   name='input_permissible')
+hidden1_permissible = tf.keras.layers.Dense(10, activation='relu',
+                                            name='hidden1_permissible')(input_permissible)
+output_permissible = tf.keras.layers.Dense(5, activation='relu',
+                                           name='output_permissible')(hidden1_permissible)
 
 # Combine Outputs
 combined = tf.keras.layers.Add(name='combined')([output_sensitive, output_permissible])
@@ -71,7 +76,8 @@ history = model.fit(
 original_eval = model.evaluate([X_test_sensitive, X_test_permissible], y_test)
 
 # Creating a new model that only uses permissible attributes
-input_permissible_only = tf.keras.Input(shape=(X_train_permissible.shape[1],), name='input_permissible_only')
+input_permissible_only = tf.keras.Input(shape=(X_train_permissible.shape[1],),
+                                        name='input_permissible_only')
 hidden1_permissible_only = model.get_layer('hidden1_permissible')(input_permissible_only)
 output_permissible_only = model.get_layer('output_permissible')(hidden1_permissible_only)
 final_output_only = model.get_layer('final_output')(output_permissible_only)
@@ -85,4 +91,5 @@ model_permissible_only.compile(optimizer='adam', loss='binary_crossentropy', met
 permissible_only_eval = model_permissible_only.evaluate(X_test_permissible, y_test)
 
 print("Original Model - Loss: {:.4f}, Accuracy: {:.4f}".format(original_eval[0], original_eval[1]))
-print("Permissible-only Model - Loss: {:.4f}, Accuracy: {:.4f}".format(permissible_only_eval[0], permissible_only_eval[1]))
+print("Permissible-only Model - Loss: {:.4f}, Accuracy: {:.4f}".format(permissible_only_eval[0],
+                                                                       permissible_only_eval[1]))
