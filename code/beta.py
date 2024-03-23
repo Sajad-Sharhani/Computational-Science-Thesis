@@ -60,19 +60,24 @@ def create_dual_input_model(input_shape_sensitive, input_shape_permissible):
 # Custom loss function wrapper
 def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None):
     def custom_loss(y_true, y_pred):
+        tf.print('y_true length:', tf.size(y_true))
         accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
 
         positive_preds = y_pred[y_true == 1]
         negative_preds = y_pred[y_true == 0]
 
         if tf.size(positive_preds) > 0 and tf.size(negative_preds) > 0:
-            fairness_loss = 1 - tf.abs(
+            fairness_loss = tf.square(
                 tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
         else:
             fairness_loss = 0.0
 
         if baseline_predictions is not None:
-            conservatism_loss = tf.keras.losses.mean_squared_error(baseline_predictions, y_pred)
+            y_pred_expanded = tf.expand_dims(y_pred, -1)  # Add a dimension to y_pred if it's 1D
+
+            # Then calculate the conservatism_loss with adjusted tensors
+            conservatism_loss = tf.keras.losses.binary_crossentropy(
+                baseline_predictions, y_pred_expanded)
         else:
             conservatism_loss = tf.constant(0.0, dtype=tf.float32)
 
@@ -119,10 +124,11 @@ for beta in betas:
     model.compile(optimizer='adam',
                   loss=custom_loss_wrapper(alpha=1, beta=beta, baseline_predictions=y_train),
                   metrics=['accuracy'])
-
+    total_samples = X_train_sensitive.shape[0]
+    print('Total samples:', total_samples)
     # Train the model
     history = model.fit([X_train_sensitive, X_train_permissible], y_train,
-                        epochs=10, batch_size=32, verbose=0)
+                        epochs=10, batch_size=total_samples, verbose=0)
 
     # Make predictions
     y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
@@ -147,7 +153,7 @@ plt.figure(figsize=(12, 8))
 
 # Plot for losses
 plt.subplot(3, 1, 1)  # 2 rows, 1 column, 1st subplot
-plt.plot(betas, accuracy_losses, label='Accuracy Loss')
+plt.plot(betas, accuracies, label='Accuracy Loss')
 plt.plot(betas, fairness_losses, label='Fairness Loss')
 plt.title('Losses as a Function of Beta')
 plt.xlabel('Beta')
