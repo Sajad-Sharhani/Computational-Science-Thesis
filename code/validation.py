@@ -73,20 +73,23 @@ X_test_permissible = X_test_transformed[:, permissible_feature_indices]
 
 def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None):
     def custom_loss(y_true, y_pred):
-        tf.print("tensors y_true:", y_true)
-        tf.print("tensors y_pred:", y_pred)
         accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
 
-        positive_preds = y_pred[y_true == 1]
-        negative_preds = y_pred[y_true == 0]
+        positive_preds = y_pred[X_train_sensitive[:, 0] == 1]
+        negative_preds = y_pred[X_train_sensitive[:, 0] == 0]
 
         if tf.size(positive_preds) > 0 and tf.size(negative_preds) > 0:
-            fairness_loss = 1 - tf.abs(tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
+            fairness_loss = tf.square(
+                tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
         else:
             fairness_loss = 0.0
 
         if baseline_predictions is not None:
-            conservatism_loss = tf.keras.losses.mean_squared_error(baseline_predictions, y_pred)
+            y_pred_expanded = tf.expand_dims(y_pred, -1)  # Add a dimension to y_pred if it's 1D
+
+            # Then calculate the conservatism_loss with adjusted tensors
+            conservatism_loss = tf.keras.losses.binary_crossentropy(
+                baseline_predictions, y_pred_expanded)
         else:
             conservatism_loss = tf.constant(0.0, dtype=tf.float32)
 
@@ -101,8 +104,11 @@ model.compile(optimizer='adam',
               #   loss='binary_crossentropy',
               metrics=['accuracy'])
 
-history = model.fit([X_train_sensitive, X_train_permissible],
-                    y_train, epochs=20, batch_size=8, validation_split=0.2, verbose=1)
+total_samples = X_train_sensitive.shape[0]
+print('Total samples:', total_samples)
+# Train the model
+history = model.fit([X_train_sensitive, X_train_permissible], y_train,
+                    epochs=10, batch_size=total_samples, verbose=0)
 
 # Make predictions
 y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
@@ -130,16 +136,16 @@ print("Training history:", history.history)
 # Accessing the history data
 epochs = range(1, len(history.history['loss']) + 1)
 loss = history.history['loss']
-val_loss = history.history['val_loss']
+# val_loss = history.history['val_loss']
 accuracy = history.history['accuracy']
-val_accuracy = history.history['val_accuracy']
+# val_accuracy = history.history['val_accuracy']
 
 # Plotting total loss
 plt.figure(figsize=(14, 5))
 
 plt.subplot(1, 2, 1)
 plt.plot(epochs, loss, 'bo-', label='Training loss')
-plt.plot(epochs, val_loss, 'ro-', label='Validation loss')
+# plt.plot(epochs, val_loss, 'ro-', label='Validation loss')
 plt.title('Training and validation loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
@@ -148,7 +154,7 @@ plt.legend()
 # Plotting accuracy
 plt.subplot(1, 2, 2)
 plt.plot(epochs, accuracy, 'bo-', label='Training accuracy')
-plt.plot(epochs, val_accuracy, 'ro-', label='Validation accuracy')
+# plt.plot(epochs, val_accuracy, 'ro-', label='Validation accuracy')
 plt.title('Training and validation accuracy')
 plt.xlabel('Epochs')
 plt.ylabel('Accuracy')

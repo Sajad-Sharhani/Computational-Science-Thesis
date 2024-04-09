@@ -58,23 +58,25 @@ def create_dual_input_model(input_shape_sensitive, input_shape_permissible):
 
 
 # Custom loss function wrapper
-def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None):
+def custom_loss_wrapper(alpha=1.0, beta=1.0, baseline_predictions=None, x_train_sensitive=None):
     def custom_loss(y_true, y_pred):
-        accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
+        # Squeeze y_pred to ensure it matches the shape of y_true
+        y_pred_squeezed = tf.squeeze(y_pred)
 
-        positive_preds = y_pred[X_train_sensitive[:, 0] == 1]
-        negative_preds = y_pred[X_train_sensitive[:, 0] == 0]
+        accuracy_loss = tf.keras.losses.binary_crossentropy(y_true, y_pred_squeezed)
+        # print the size of x_train_sensitive
+        # tf.print(tf.size(x_train_sensitive[:, 0] == 0))
+        positive_preds = y_pred_squeezed[x_train_sensitive[:, 0] == 1]
+        negative_preds = y_pred_squeezed[x_train_sensitive[:, 0] == 0]
 
         if tf.size(positive_preds) > 0 and tf.size(negative_preds) > 0:
-            fairness_loss = tf.square(
-                tf.reduce_mean(positive_preds) - tf.reduce_mean(negative_preds))
+            fairness_loss = tf.math.squared_difference(
+                tf.reduce_mean(positive_preds), tf.reduce_mean(negative_preds))
         else:
             fairness_loss = 0.0
 
         if baseline_predictions is not None:
-            y_pred_expanded = tf.expand_dims(y_pred, -1)  # Add a dimension to y_pred if it's 1D
-
-            # Then calculate the conservatism_loss with adjusted tensors
+            y_pred_expanded = tf.expand_dims(y_pred_squeezed, -1)  #
             conservatism_loss = tf.keras.losses.binary_crossentropy(
                 baseline_predictions, y_pred_expanded)
         else:
@@ -99,7 +101,7 @@ X_test_sensitive = X_test_transformed[:, sensitive_feature_indices]
 X_test_permissible = X_test_transformed[:, permissible_feature_indices]
 
 
-betas = np.linspace(0, 1, 5)  # Adjust the range and number of beta values as needed
+betas = np.linspace(0, 1, 10)  # Adjust the range and number of beta values as needed
 
 # Initialize lists to store results
 accuracy_losses = []
@@ -120,25 +122,50 @@ baseline_predictions = np.mean(y_train)
 for beta in betas:
     print(f"Training model with beta: {beta}")
     # Recompile the model with the current beta
-    model.compile(optimizer='adam',
-                  loss=custom_loss_wrapper(alpha=0.75, beta=beta, baseline_predictions=y_train),
-                  metrics=['accuracy'])
-    total_samples = X_train_sensitive.shape[0]
-    print('Total samples:', total_samples)
-    # Train the model
-    history = model.fit([X_train_sensitive, X_train_permissible], y_train,
-                        epochs=10, batch_size=total_samples, verbose=0)
+    # model.compile(optimizer='adam',
+    #               loss=custom_loss_wrapper(alpha=1, beta=beta, baseline_predictions=y_train),
+    #               metrics=['accuracy'])
+
+    optimizer = tf.keras.optimizers.Adam()
+    epochs = 10
+    batch_size = 32
+
+    # Assuming your dataset is already shuffled if necessary
+    train_dataset = tf.data.Dataset.from_tensor_slices(
+        (X_train_sensitive, X_train_permissible, y_train))
+    train_dataset = train_dataset.batch(batch_size)
+
+    for epoch in range(epochs):
+        print(f"Epoch {epoch+1}/{epochs}")
+        epoch_loss_avg = tf.keras.metrics.Mean()
+
+        for batch, (x_sensitive, x_permissible, y) in enumerate(train_dataset):
+            # print the size of x_sensitive, x_permissible, y
+            with tf.GradientTape() as tape:
+                y_pred = model([x_sensitive, x_permissible], training=True)  # Get model predictions
+                loss = custom_loss_wrapper(alpha=1, beta=1,
+                                           baseline_predictions=y_train,
+                                           x_train_sensitive=x_sensitive)(y, y_pred)
+            gradients = tape.gradient(loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+            epoch_loss_avg.update_state(loss)
+            if batch % 10 == 0:  # Adjust the frequency of logging to your preference
+                print(f"Epoch {epoch+1}, Batch {batch}, Loss: {epoch_loss_avg.result().numpy()}")
+
+        # End of epoch - you can add validation logic here if you wish
+        print(f"Epoch {epoch+1} finished, Avg Loss: {epoch_loss_avg.result().numpy()}")
 
     # Make predictions
     y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
     y_pred_binary = (y_pred > 0.5).astype(int)
 
     # Calculate losses and mean prediction
-    accuracy_loss = history.history['loss'][-1]
+    accuracy_loss = np.mean(np.abs(y_test - y_pred))
     fairness_loss = conditional_value(y_pred_binary, X_test_sensitive[:, 0])
     mean_prediction = np.mean(y_pred)
     conservatism_loss = np.mean(np.square(baseline_predictions - y_pred))
-    accuracy = history.history['accuracy'][-1]
+    accuracy = np.mean(y_test == y_pred_binary)
 
     # Store results
     accuracy_losses.append(accuracy_loss)

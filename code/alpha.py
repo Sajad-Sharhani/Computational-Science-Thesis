@@ -99,16 +99,6 @@ X_test_sensitive = X_test_transformed[:, sensitive_feature_indices]
 X_test_permissible = X_test_transformed[:, permissible_feature_indices]
 
 
-betas = np.linspace(0, 1, 5)  # Adjust the range and number of beta values as needed
-
-# Initialize lists to store results
-accuracy_losses = []
-fairness_losses = []
-accuracies = []
-mean_predictions = []
-conservatism_losses = []
-
-
 def conditional_value(y_pred, sensitive_column):
     """ Conditional Value (CV) """
     cv_1 = np.mean(y_pred[sensitive_column == 1])
@@ -117,64 +107,91 @@ def conditional_value(y_pred, sensitive_column):
 
 
 baseline_predictions = np.mean(y_train)
-for beta in betas:
-    print(f"Training model with beta: {beta}")
-    # Recompile the model with the current beta
-    model.compile(optimizer='adam',
-                  loss=custom_loss_wrapper(alpha=0.75, beta=beta, baseline_predictions=y_train),
-                  metrics=['accuracy'])
-    total_samples = X_train_sensitive.shape[0]
-    print('Total samples:', total_samples)
-    # Train the model
-    history = model.fit([X_train_sensitive, X_train_permissible], y_train,
-                        epochs=10, batch_size=total_samples, verbose=0)
+# Define your alphas and betas arrays
+alphas = np.linspace(start=0.1, stop=1, num=10)  # Example range for alpha
+betas = np.linspace(start=0.1, stop=1, num=10)  # Example range for beta
 
-    # Make predictions
-    y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
-    y_pred_binary = (y_pred > 0.5).astype(int)
+# Initialize lists to store results for plotting
+results = []
 
-    # Calculate losses and mean prediction
-    accuracy_loss = history.history['loss'][-1]
-    fairness_loss = conditional_value(y_pred_binary, X_test_sensitive[:, 0])
-    mean_prediction = np.mean(y_pred)
-    conservatism_loss = np.mean(np.square(baseline_predictions - y_pred))
-    accuracy = history.history['accuracy'][-1]
+for alpha in alphas:
+    accuracy_losses = []
+    fairness_losses = []
+    mean_predictions = []
+    accuracies = []
+    conservatism_losses = []
 
-    # Store results
-    accuracy_losses.append(accuracy_loss)
-    fairness_losses.append(fairness_loss)
-    mean_predictions.append(mean_prediction)
-    accuracies.append(accuracy)
-    conservatism_losses.append(conservatism_loss)
+    for beta in betas:
+        print(f"Training model with alpha: {alpha}, beta: {beta}")
+        # Recompile the model with the current alpha and beta
+        model.compile(optimizer='adam',
+                      loss=custom_loss_wrapper(alpha=alpha, beta=beta,
+                                               baseline_predictions=y_train),
+                      metrics=['accuracy'])
+        total_samples = X_train_sensitive.shape[0]
+        print('Total samples:', total_samples)
+        # Train the model
+        history = model.fit([X_train_sensitive, X_train_permissible], y_train,
+                            epochs=10, batch_size=total_samples, verbose=0)
 
-# Now, plot the results
-plt.figure(figsize=(12, 8))
+        # Make predictions
+        y_pred = model.predict([X_test_sensitive, X_test_permissible]).flatten()
+        y_pred_binary = (y_pred > 0.5).astype(int)
 
-# Plot for losses
-plt.subplot(3, 1, 1)  # 2 rows, 1 column, 1st subplot
-plt.plot(betas, accuracies, label='Accuracy Loss')
-plt.plot(betas, fairness_losses, label='Fairness Loss')
-plt.title('Losses as a Function of Beta')
-plt.xlabel('Beta')
-plt.ylabel('Loss')
-plt.legend()
+        # Calculate losses and mean prediction
+        accuracy_loss = history.history['loss'][-1]
+        fairness_loss = conditional_value(y_pred_binary, X_test_sensitive[:, 0])
+        mean_prediction = np.mean(y_pred)
+        conservatism_loss = np.mean(np.square(baseline_predictions - y_pred))
+        accuracy = history.history['accuracy'][-1]
 
-# conservatism loss vs beta
-plt.subplot(3, 1, 2)  # 2 rows, 1 column, 2nd subplot
-plt.plot(betas, conservatism_losses, label='Conservatism Loss')
-plt.title('Conservatism Loss as a Function of Beta')
-plt.xlabel('Beta')
-plt.ylabel('Conservatism Loss')
-plt.legend()
+        # Store results for this beta
+        accuracy_losses.append(accuracy_loss)
+        fairness_losses.append(fairness_loss)
+        mean_predictions.append(mean_prediction)
+        accuracies.append(accuracy)
+        conservatism_losses.append(conservatism_loss)
 
-# mean prediction vs beta
-plt.subplot(3, 1, 3)  # 2 rows, 1 column, 3rd subplot
-plt.plot(betas, mean_predictions, label='Mean Prediction')
-plt.title('Mean Prediction as a Function of Beta')
-plt.xlabel('Beta')
-plt.ylabel('Mean Prediction')
-plt.legend()
+    # Store combined results for this alpha
+    results.append({
+        "alpha": alpha,
+        "accuracy_losses": accuracy_losses,
+        "fairness_losses": fairness_losses,
+        "mean_predictions": mean_predictions,
+        "accuracies": accuracies,
+        "conservatism_losses": conservatism_losses
+    })
 
+# Now, plot the results for each alpha
+for result in results:
+    alpha = result["alpha"]
 
-plt.tight_layout()  # Adjusts subplot params so that subplots fit into the figure area
-plt.show()
+    plt.figure(figsize=(12, 8))
+
+    # Plot for losses
+    plt.subplot(3, 1, 1)
+    plt.plot(betas, result["accuracies"], label='Accuracy Loss')
+    plt.plot(betas, result["fairness_losses"], label='Fairness Loss')
+    plt.title(f'Losses as a Function of Beta (Alpha = {alpha})')
+    plt.xlabel('Beta')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # conservatism loss vs beta
+    plt.subplot(3, 1, 2)
+    plt.plot(betas, result["conservatism_losses"], label='Conservatism Loss')
+    plt.title('Conservatism Loss as a Function of Beta')
+    plt.xlabel('Beta')
+    plt.ylabel('Conservatism Loss')
+    plt.legend()
+
+    # mean prediction vs beta
+    plt.subplot(3, 1, 3)
+    plt.plot(betas, result["mean_predictions"], label='Mean Prediction')
+    plt.title('Mean Prediction as a Function of Beta')
+    plt.xlabel('Beta')
+    plt.ylabel('Mean Prediction')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
